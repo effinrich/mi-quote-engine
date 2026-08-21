@@ -127,6 +127,9 @@ the app; the short version:
   server-side — never inferred from the client.
 - File-backed JSON persistence. A real audit trail needs an append-only store with retention
   guarantees; the storage interface is narrow so swapping it touches one file.
+- **On the hosted demo the audit log is ephemeral.** Serverless runtimes mount a read-only
+  filesystem apart from the temp directory, so records are written per-instance and do not
+  survive a cold start. Set `DATA_DIR` to a mounted volume where one exists.
 
 ## Stack
 

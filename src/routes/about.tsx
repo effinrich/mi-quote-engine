@@ -130,6 +130,13 @@ function AboutPage() {
             Authentication is out of scope: the reviewer identity is supplied by
             the client rather than derived from a verified session.
           </li>
+          <li>
+            On this hosted demo the audit log is written to the serverless
+            instance&rsquo;s temp directory, so it does not survive a cold start
+            and is not shared between instances. Quotes and review tasks you
+            create may disappear. A real audit trail needs a durable
+            append-only store.
+          </li>
         </ul>
       </section>
     </article>

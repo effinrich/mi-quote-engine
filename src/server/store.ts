@@ -13,10 +13,33 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { QuoteResult, ReviewTask } from '#/domain/types'
 
-const DATA_FILE = join(process.cwd(), 'data', 'audit-log.json')
+/**
+ * Serverless runtimes mount a read-only filesystem apart from the temp
+ * directory, so writing under the project root throws `ENOENT` on `mkdir`.
+ *
+ * The honest caveat for the hosted demo: the temp directory is per-instance
+ * and ephemeral, so the audit log does not survive a cold start and is not
+ * shared between concurrent instances. That is acceptable for a demonstration
+ * and unacceptable for the real thing — a production audit trail needs a
+ * durable append-only store, which is why this module keeps a narrow
+ * interface. Set `DATA_DIR` to point at a mounted volume where one exists.
+ */
+function resolveDataDir(): string {
+  if (process.env.DATA_DIR) return process.env.DATA_DIR
+
+  const isServerless = Boolean(
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME,
+  )
+  return isServerless
+    ? join(tmpdir(), 'mi-quote-engine')
+    : join(process.cwd(), 'data')
+}
+
+const DATA_FILE = join(resolveDataDir(), 'audit-log.json')
 
 interface StoreShape {
   quotes: Array<QuoteResult>

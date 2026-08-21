@@ -15,6 +15,16 @@ export default [
     },
   },
   {
-    ignores: ['eslint.config.js', 'prettier.config.js'],
+    ignores: [
+      'eslint.config.js',
+      'prettier.config.js',
+      // Build artifacts. The Vercel preset writes bundled JS under .vercel/output,
+      // which is outside the tsconfig project and fails the type-aware parser.
+      '.vercel/**',
+      '.nitro/**',
+      'dist/**',
+      '.output/**',
+      'src/routeTree.gen.ts',
+    ],
   },
 ]
