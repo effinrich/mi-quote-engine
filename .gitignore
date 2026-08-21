@@ -1,0 +1,22 @@
+node_modules
+dist
+.output
+.vercel
+.nitro
+.tanstack
+.vinxi
+src/routeTree.gen.ts
+
+# Local audit log / review queue. File-backed persistence is a demo
+# convenience; the contents are runtime data, not source.
+data/
+
+.env
+.env.*
+!.env.example
+
+# Agent tooling state — operational artifacts, not source.
+.omc/
+
+.DS_Store
+*.log

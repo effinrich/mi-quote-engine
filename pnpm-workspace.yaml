@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  # Native resolver used by the ESLint toolchain; build it so dependency
+  # status checks pass rather than leaving the decision unresolved.
+  unrs-resolver: true

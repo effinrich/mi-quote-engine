@@ -1,0 +1,247 @@
+openapi: 3.1.0
+info:
+  title: MI Rate & Eligibility BFF
+  version: 1.0.0
+  description: >
+    Backend-for-Frontend contract for the mortgage-insurance quote experience.
+    Endpoints are journey-shaped rather than resource-shaped: POST /quote
+    returns everything the quote screen renders, in one round-trip.
+
+    The contract is fixed and versioned by design. In a regulated workflow the
+    question "what exactly was asked, and what exactly was returned" has to be
+    answerable months after the fact, which a client-shaped query language
+    makes harder rather than easier.
+
+servers:
+  - url: /api
+
+paths:
+  /quote:
+    post:
+      summary: Evaluate a loan and return a decision with its premium
+      operationId: createQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteRequest' }
+      responses:
+        '200':
+          description: Decision evaluated and recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuoteResult' }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationError' }
+
+  /explain:
+    post:
+      summary: Plain-language narration of a recorded decision
+      description: >
+        Takes a quoteId rather than a result body so the narration is always
+        generated from the audit log. Falls back to a deterministic explanation
+        when no model is configured, when the model call fails, or when the
+        model's output fails the numeric grounding check.
+      operationId: explainQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quoteId]
+              properties:
+                quoteId: { type: string }
+      responses:
+        '200':
+          description: Explanation generated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Explanation' }
+        '404': { description: Quote not found }
+
+  /review:
+    get:
+      summary: List review tasks
+      operationId: listReviewTasks
+      responses:
+        '200':
+          description: Queue contents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReviewTask' }
+    post:
+      summary: Resolve a review task
+      operationId: resolveReviewTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId, status, reviewer, note]
+              properties:
+                taskId: { type: string }
+                status: { type: string, enum: [approved, declined] }
+                reviewer: { type: string }
+                note:
+                  type: string
+                  description: Required — the recorded reason for the override.
+      responses:
+        '200':
+          description: Task resolved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewTask' }
+        '409': { description: Task not found or already resolved }
+
+components:
+  schemas:
+    QuoteRequest:
+      type: object
+      required:
+        [
+          loanAmount,
+          propertyValue,
+          creditScore,
+          debtToIncomeRatio,
+          loanTerm,
+          amortizationType,
+          occupancy,
+          propertyType,
+          loanPurpose,
+        ]
+      properties:
+        loanAmount: { type: number, exclusiveMinimum: 0 }
+        propertyValue: { type: number, exclusiveMinimum: 0 }
+        creditScore: { type: integer, minimum: 300, maximum: 850 }
+        debtToIncomeRatio: { type: number, minimum: 0, maximum: 100 }
+        loanTerm: { type: integer, enum: [20, 30] }
+        amortizationType: { type: string, enum: [fixed, arm] }
+        occupancy: { type: string, enum: [primary, second-home, investment] }
+        propertyType: { type: string, enum: [sfr, condo, 2-unit, 3-4-unit] }
+        loanPurpose:
+          { type: string, enum: [purchase, rate-term-refi, cash-out-refi] }
+
+    RuleCitation:
+      type: object
+      required: [ruleId, description, severity, source]
+      properties:
+        ruleId: { type: string, example: ELIG-010 }
+        description: { type: string }
+        severity: { type: string, enum: [decline, refer] }
+        source:
+          type: string
+          description: The guideline or document the rule derives from.
+
+    PremiumAdjustment:
+      type: object
+      required: [code, description, deltaPercent, source]
+      properties:
+        code: { type: string, example: ADJ-DTI-45 }
+        description: { type: string }
+        deltaPercent:
+          type: number
+          description: Additive annual percentage points.
+        source: { type: string }
+
+    QuoteResult:
+      type: object
+      required:
+        [
+          quoteId,
+          evaluatedAt,
+          rateCardVersion,
+          rulesVersion,
+          request,
+          derived,
+          decision,
+          premium,
+          reviewTask,
+        ]
+      properties:
+        quoteId: { type: string }
+        evaluatedAt: { type: string, format: date-time }
+        rateCardVersion: { type: string }
+        rulesVersion: { type: string }
+        request: { $ref: '#/components/schemas/QuoteRequest' }
+        derived:
+          type: object
+          properties:
+            ltv: { type: number }
+            coveragePercent: { type: number }
+            ltvBandId: { type: string }
+            ficoBandId: { type: string }
+        decision:
+          type: object
+          properties:
+            outcome: { type: string, enum: [approve, refer, decline] }
+            reasons:
+              type: array
+              items: { $ref: '#/components/schemas/RuleCitation' }
+        premium:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                baseRatePercent: { type: number }
+                adjustments:
+                  type: array
+                  items: { $ref: '#/components/schemas/PremiumAdjustment' }
+                finalRatePercent: { type: number }
+                annualPremium: { type: number }
+                monthlyPremium: { type: number }
+          description: Null on a declined loan — no premium is quoted.
+        reviewTask:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ReviewTask'
+
+    ReviewTask:
+      type: object
+      required: [taskId, quoteId, queue, status, createdAt, resolution]
+      properties:
+        taskId: { type: string }
+        quoteId: { type: string }
+        queue: { type: string }
+        status: { type: string, enum: [pending, approved, declined] }
+        createdAt: { type: string, format: date-time }
+        resolution:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                status: { type: string, enum: [approved, declined] }
+                reviewer: { type: string }
+                note: { type: string }
+                resolvedAt: { type: string, format: date-time }
+
+    Explanation:
+      type: object
+      required: [text, source]
+      properties:
+        text: { type: string }
+        source:
+          type: string
+          enum: [model, deterministic]
+          description: How the text was produced, surfaced in the UI.
+        rejectedReason:
+          type: string
+          description: Present when a model response was generated and rejected.
+
+    ValidationError:
+      type: object
+      properties:
+        error: { type: string }
+        details:
+          type: array
+          items: { type: string }
+          description: Every failing field, not just the first.
